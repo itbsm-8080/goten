@@ -1,3 +1,13 @@
+# Konfigurasi lokal
+.env
+
+# Alat bantu AI - milik mesin, bukan kode aplikasi
+.opencode/
+AGENTS.md
+
+# Modifikasi trust-location untuk device ini; dipakai lewat path lokal di pubspec.yaml
+packages/trust-location-mod/
+
 # Miscellaneous
 *.class
 *.lock
