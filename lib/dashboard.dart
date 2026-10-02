@@ -105,7 +105,7 @@ class _DashboardState extends State<Dashboard> {
 
       final unitData = await KaryawanService.getUnitById(karKdUnit ?? '');
 
-      Map<String, String?> absensiData = {'masuk': null, 'keluar': null};
+      Map<String, dynamic> absensiData = {'masuk': null, 'keluar': null};
       if (karNama != null) {
         absensiData = await AbsensiService.getAbsensiHariIni(karNama);
       }

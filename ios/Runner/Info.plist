@@ -43,6 +43,10 @@
 		</array>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
+		<key>NSCameraUsageDescription</key>
+		<string>Aplikasi menggunakan kamera untuk foto bukti DO Kirim</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Aplikasi mengakses galeri untuk memilih foto bukti DO Kirim</string>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
 		<key>UIApplicationSupportsIndirectInputEvents</key>

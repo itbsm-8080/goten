@@ -5,9 +5,18 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+// Kredensial signing release dibaca dari android/key.properties (tidak di-commit).
+// Release WAJIB pakai key ini, bukan debug key: Android menolak menimpa APK yang
+// ditandatangani sertifikat berbeda, jadi ganti key = semua HP harus uninstall manual.
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
 android {
     namespace = "com.example.goten_app_flutter"
-    compileSdk = 34
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -30,11 +39,29 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                // rootProject.file, bukan file(): key.properties ada di android/,
+                // sedangkan file() di sini relatif ke android/app/.
+                storeFile = rootProject.file(keystoreProperties["storeFile"])
+                storePassword = keystoreProperties["storePassword"]
+                keyAlias = keystoreProperties["keyAlias"]
+                keyPassword = keystoreProperties["keyPassword"]
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.release
+            } else {
+                // Tanpa key.properties, jatuh ke debug key supaya `flutter run --release`
+                // tetap jalan. APK seperti ini tidak bisa jadi update untuk app yang
+                // sudah terinstall di HP.
+                signingConfig = signingConfigs.debug
+            }
         }
     }
 }

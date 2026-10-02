@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"  package="com.example.goten_app_flutter">
+    <!-- Wajib untuk memasang APK update dari dalam app (Android 8+).
+         Tanpa ini intent install akan SecurityException. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="GOTEN BSM"
         android:name="${applicationName}"
@@ -30,6 +33,18 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Memberi open_filex akses ke APK yang sudah diunduh, supaya Android bisa
+             menampilkan dialog install. Authority harus sama dengan yang dipakai open_filex. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.flutter_open_filex"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/provider_paths"/>
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

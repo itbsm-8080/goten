@@ -32,15 +32,43 @@ class ApiService {
           "Content-Type": "application/x-www-form-urlencoded",
         },
         body: data,
-      ).timeout(Duration(seconds: timeoutSeconds));
+      ).timeout(
+        Duration(seconds: 15),
+        onTimeout: () {
+          print('⏰ Timeout: $endpoint');
+          return http.Response('Timeout', 408);
+        },
+      );
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
-      print('POST Error: ${response.statusCode} - ${response.body}');
+      print('❌ POST Error: ${response.statusCode} - ${response.body.length} chars');
       return null;
     } catch (e) {
-      print('API POST Error: $e');
+      print('❌ API POST Exception: $e');
+      return null;
+    }
+  }
+
+  // POST mentah: kembalikan respons apa adanya (termasuk 400/4xx) untuk pesan error
+  static Future<http.Response?> postRaw(String endpoint, Map<String, String> data) async {
+    try {
+      return await http.post(
+        Uri.parse(endpoint),
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: data,
+      ).timeout(
+        Duration(seconds: 15),
+        onTimeout: () {
+          print('⏰ Timeout: $endpoint');
+          return http.Response('Timeout', 408);
+        },
+      );
+    } catch (e) {
+      print('❌ API POST Raw Exception: $e');
       return null;
     }
   }

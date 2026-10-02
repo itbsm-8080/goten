@@ -11,12 +11,12 @@ import 'package:http/http.dart' as http;
 import 'dart:math' show cos, sqrt, asin;
 import 'package:one_clock/one_clock.dart';
 import 'dart:convert';
-import 'package:intl/intl.dart';
 import 'package:deep_pick/deep_pick.dart';
 import 'utils/device_utils.dart';
 import 'dart:io' show Platform;
 import 'services/absensi_service.dart';
 import 'services/karyawan_service.dart';
+import 'widgets/shift_dialog.dart';
 
 class Absen extends StatefulWidget {
   final double? customLatitude;
@@ -189,7 +189,7 @@ class _AbsenState extends State<Absen> {
   Future<void> _checkTodayAttendanceStatus() async {
     if (_namaKar == null) return;
 
-    Map<String, String?> absensiData = {'masuk': null, 'keluar': null};
+    Map<String, dynamic> absensiData = {'masuk': null, 'keluar': null};
     absensiData = await AbsensiService.getAbsensiHariIni(_namaKar!);
 
     if (mounted) {
@@ -250,21 +250,23 @@ class _AbsenState extends State<Absen> {
         return;
       }
 
-      String tanggal = DateFormat("yyyy-MM-dd HH:mm:ss").format(DateTime.now());
-
-      final success = await AbsensiService.submitAbsensi(
+      final result = await submitAbsensiWithShift(
+        context,
+        aksi: 'Check In',
         karNik: _karNik!,
-        tanggal: tanggal,
         kdCabang: _kdCabang!,
         latitude: _latitude_absen.toString(),
         longitude: _longitude_absen.toString(),
+        status: 1,
       );
 
-      if (success) {
-        _showSuccessMessage('Berhasil Check In di $_namaUnit');
+      if (result.code == 'cancelled') return;
+
+      if (result.success) {
+        _showSuccessMessage('Berhasil Check In Shift ${result.shift} di $_namaUnit');
         await _checkTodayAttendanceStatus();
       } else {
-        _showErrorMessage('Check In gagal. Silakan coba lagi');
+        _showErrorMessage(result.message);
       }
     } catch (e) {
       print('Error in _doCheckIn: $e');
@@ -283,23 +285,6 @@ class _AbsenState extends State<Absen> {
       _showErrorMessage('Data karyawan tidak lengkap');
       return;
     }
-
-    if (!hasCheckedInToday) {
-      _showErrorMessage('Melakukan Check In otomatis sebelum Check Out...');
-      await _doCheckIn();
-      await Future.delayed(Duration(seconds: 2));
-      await _checkTodayAttendanceStatus();
-
-      if (!hasCheckedInToday) {
-        _showErrorMessage('Gagal melakukan Check In otomatis');
-        return;
-      }
-    }
-
-    // if (hasCheckedOutToday) {
-    //   _showErrorMessage('Anda sudah melakukan Check Out hari ini');
-    //   return;
-    // }
 
     setState(() {
       isSubmittingCheckOut = true;
@@ -320,21 +305,23 @@ class _AbsenState extends State<Absen> {
         return;
       }
 
-      String tanggal = DateFormat("yyyy-MM-dd HH:mm:ss").format(DateTime.now());
-
-      final success = await AbsensiService.submitAbsensi(
+      final result = await submitAbsensiWithShift(
+        context,
+        aksi: 'Check Out',
         karNik: _karNik!,
-        tanggal: tanggal,
         kdCabang: _kdCabang!,
         latitude: _latitude_absen.toString(),
         longitude: _longitude_absen.toString(),
+        status: 2,
       );
 
-      if (success) {
-        _showSuccessMessage('Berhasil Check Out');
-        await _checkTodayAttendanceStatus(); // Refresh status
+      if (result.code == 'cancelled') return;
+
+      if (result.success) {
+        _showSuccessMessage('Berhasil Check Out Shift ${result.shift}');
+        await _checkTodayAttendanceStatus();
       } else {
-        _showErrorMessage('Check Out gagal. Silakan coba lagi');
+        _showErrorMessage(result.message);
       }
     } catch (e) {
       print('Error in _doCheckOut: $e');

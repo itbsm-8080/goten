@@ -11,8 +11,14 @@ class AppConfig {
   static String get absensiHariIni => '$baseUrl/absensi/hari-ini';
   static String get absensiHistory => '$baseUrl/absensi/history';
   static String get absensiTambah => '$baseUrl/absensi/tambah';
+  static String get absensiShift => '$baseUrl/absensi/shift';
   static String get jabatanEndpoint => '$baseUrl/jabatan';
   static String get rotiQUnitsEndpoint => "$baseUrl/unitrotiq";
+
+  // Manifest versi aplikasi. Menunjuk ke file JSON yang menyebut APK terbaru,
+  // supaya user tidak perlu mengunduh langsung dari halaman web.
+  static String get updateManifestUrl =>
+      dotenv.env['UPDATE_URL'] ?? 'http://103.103.22.7/cutikaryawan/apk/version.json';
 
 
   // Dynamic endpoints
@@ -20,4 +26,10 @@ class AppConfig {
   static String karyawanByUnit(String unitId) => '$baseUrl/karyawan/unit/$unitId';
   static String unitById(String unitId) => '$baseUrl/unit/$unitId';
   static String jabatanByKode(String kode) => '$baseUrl/jabatan/$kode';
+
+  static String get uploadIzinEndpoint => '$baseUrl/cutikaryawan/upload.php';
+
+  // Upload & tampil foto (pakai server file seperti Delphi)
+  static String get uploadFotoEndpoint => dotenv.env['UPLOAD_URL'] ?? 'http://103.103.22.7/cutikaryawan/upload.php';
+  static String get buktiBaseUrl => dotenv.env['BUKTI_URL'] ?? 'http://103.103.22.7/cutikaryawan/bukti';
 }

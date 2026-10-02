@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:goten/model/employee.dart';
 import 'package:goten/model/unit.dart';
 import 'package:goten/widgets/dialogs.dart';
-import 'dashboard.dart';
+import 'dashboard_baru.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:http/http.dart' as http;
@@ -184,7 +184,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       if (success) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => Dashboard()),
+          MaterialPageRoute(builder: (context) => DashboardBaru()),
         );
       } else {
         _showMessage("Registrasi gagal. Silakan coba lagi.", isError: true);

@@ -1,252 +1,168 @@
 import 'dart:convert';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:goten/widgets/indikator.dart';
-import 'package:goten/absen.dart';
-import 'package:goten/dashboard.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:http/http.dart' as http;
 import 'package:deep_pick/deep_pick.dart';
-import 'package:convert/convert.dart';
 
 class StatistikSemua extends StatefulWidget {
-  StatistikSemua({super.key, this.nama});
-  String? nama;
+  final String? nama;
+  const StatistikSemua({super.key, this.nama});
 
   @override
   State<StatistikSemua> createState() => _StatistikSemuaState();
 }
 
 class _StatistikSemuaState extends State<StatistikSemua> {
-  final TextStyle whiteText = TextStyle(color: Colors.white);
-  int touchedIndex = -1;
-  String _jmlterlambat = '0';
-  String _jmltepat = '0';
-  String _persentasetepat = '0';
-  String _persentaseterlambat = '0';
+  int _touchedIndex = -1;
+  double _tepat = 0;
+  double _terlambat = 0;
+  bool _isLoading = true;
 
+  static const Color bg = Color(0xFFF0F4FF);
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color textMain = Color(0xFF1B1B2F);
+  static const Color textSub = Color(0xFF5A5A7A);
+  static const Color textLight = Color(0xFF9090A8);
+  static const Color border = Color(0xFFE8ECF4);
+  static const Color primaryBlue = Color(0xFF3B6DF0);
+  static const Color successGreen = Color(0xFF00C897);
+  static const Color accentCoral = Color(0xFFFF5E62);
+  static const Color purple = Color(0xFF7C3AED);
 
   @override
   void initState() {
-    _ambilData();
-    // TODO: implement initState
     super.initState();
+    _loadData();
   }
 
-  _ambilData() async {
-    final ambilKaryawan = await http.post(Uri.parse('http://188.166.226.122:8080/statistik/all'),
-    headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: {"nama" : widget.nama });
-    final dataKar = jsonDecode(ambilKaryawan.body);
-    print(dataKar);
-    final jmlterlambat = pick(dataKar, 'data',0,'JumlahTerlambat').asDoubleOrNull() ?? 0;
-    final jmltepat = pick(dataKar, 'data',0,'JumlahTepatWaktu').asDoubleOrNull() ?? 0;
-    final persentaseterlambat = pick(dataKar, 'data',0,'PersentaseTerlambat').asDoubleOrNull() ?? 0;
-    final persentasetepat = pick(dataKar, 'data',0,'PersentaseTepatWaktu').asDoubleOrNull() ?? 0;
-
-    setState(() {
-      _jmlterlambat = jmlterlambat.toStringAsFixed(2);
-      _jmltepat = jmltepat.toStringAsFixed(2);
-      _persentasetepat = persentasetepat.toStringAsFixed(2);
-      _persentaseterlambat = persentaseterlambat.toStringAsFixed(2);
-    });
-
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await http.post(
+        Uri.parse('http://188.166.226.122:8080/statistik/all'),
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: {"nama": widget.nama ?? ''},
+      );
+      final data = jsonDecode(response.body);
+      setState(() {
+        _tepat = pick(data, 'data', 0, 'PersentaseTepatWaktu').asDoubleOrNull() ?? 0;
+        _terlambat = pick(data, 'data', 0, 'PersentaseTerlambat').asDoubleOrNull() ?? 0;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: _buildBody(context),
-    );
-  }
-
-    Widget _buildBody(BuildContext context) {
-    return SingleChildScrollView(
-    child:
-    Container(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          _buildHeader(),
-          SizedBox(height: 20,),
-          AspectRatio(
-            aspectRatio: 1,
-            child: Card(
-              margin: EdgeInsets.fromLTRB(16, 16, 16, 16),
-              color: Colors.white,
-              child: Container(
-                child:
-                Column (
-                children: <Widget>[
-                  const SizedBox(
-                    height: 10,
-                  ),
-                  Center(child:Text("Persentase Anda secara Keseluruhan", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),)),
-                  SizedBox(
-                    height: 16,
-                  ),
-                  Expanded(
-                    child: AspectRatio(
-                      aspectRatio: 1,
-                      child: PieChart(
-                        PieChartData(
-                          pieTouchData: PieTouchData(
-                            touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                              setState(() {
-                                if (!event.isInterestedForInteractions ||
-                                    pieTouchResponse == null ||
-                                    pieTouchResponse.touchedSection == null) {
-                                  touchedIndex = -1;
-                                  return;
-                                }
-                                touchedIndex = pieTouchResponse
-                                    .touchedSection!.touchedSectionIndex;
-                              });
-                            },
-                          ),
-                          borderData: FlBorderData(
-                            show: false,
-                          ),
-                          sectionsSpace: 0,
-                          centerSpaceRadius: 40,
-                          sections: showingSections(),
-                        ),
+      backgroundColor: bg,
+      appBar: AppBar(
+        title: Text('Statistik Keseluruhan', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: textMain)),
+        backgroundColor: surface,
+        foregroundColor: textMain,
+        elevation: 0,
+        centerTitle: true,
+        shape: Border(bottom: BorderSide(color: border)),
+      ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator(color: primaryBlue, strokeWidth: 2.5))
+          : RefreshIndicator(
+        onRefresh: _loadData,
+        color: primaryBlue,
+        child: SingleChildScrollView(
+          physics: AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.all(16),
+          child: Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: surface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: border),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 4, height: 18,
+                      decoration: BoxDecoration(color: purple, borderRadius: BorderRadius.circular(2)),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Persentase Keseluruhan', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: textMain)),
+                  ],
+                ),
+                SizedBox(height: 20),
+                SizedBox(
+                  height: 240,
+                  child: PieChart(
+                    PieChartData(
+                      pieTouchData: PieTouchData(
+                        touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                          setState(() {
+                            if (!event.isInterestedForInteractions || pieTouchResponse == null || pieTouchResponse.touchedSection == null) {
+                              _touchedIndex = -1;
+                              return;
+                            }
+                            _touchedIndex = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                          });
+                        },
                       ),
+                      borderData: FlBorderData(show: false),
+                      sectionsSpace: 4,
+                      centerSpaceRadius: 55,
+                      sections: [
+                        PieChartSectionData(
+                          color: successGreen,
+                          value: _tepat,
+                          title: '${_tepat.toStringAsFixed(1)}%',
+                          radius: _touchedIndex == 0 ? 75 : 65,
+                          titleStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                        PieChartSectionData(
+                          color: accentCoral,
+                          value: _terlambat,
+                          title: '${_terlambat.toStringAsFixed(1)}%',
+                          radius: _touchedIndex == 1 ? 75 : 65,
+                          titleStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                      ],
                     ),
                   ),
-                  
-                  Padding(padding: EdgeInsets.only(left: 20, top: 16),
-                  child:
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const <Widget>[
-                      Indicator(
-                        color: Colors.green,
-                        text: 'Tepat Waktu',
-                        isSquare: true,
-                      ),
-                      SizedBox(
-                        height: 4,
-                      ),
-                      Indicator(
-                        color: Colors.red,
-                        text: 'Terlambat',
-                        isSquare: true,
-                      ),
-                      SizedBox(
-                        height: 4,
-                      ),
-                    ],
-                  ),
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children:  <Widget>[
-                      Indicator(
-                        color: Colors.green,
-                        text: _persentasetepat + ' %',
-                        isSquare: true,
-                      ),
-                      SizedBox(
-                        height: 4,
-                      ),
-                      Indicator(
-                        color: Colors.red,
-                        text: _persentaseterlambat + ' %',
-                        isSquare: true,
-                      ),
-                      SizedBox(
-                        height: 4,
-                      ),
-                    ],
-                  ),
-                  ]
-                  )),
-                  
-                  
-                  SizedBox(
-                    height: 16,
-                  ),
-                ],
-              ),
-              )
+                ),
+                SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _legendDot(successGreen, 'Tepat Waktu', '${_tepat.toStringAsFixed(1)}%'),
+                    SizedBox(width: 32),
+                    _legendDot(accentCoral, 'Terlambat', '${_terlambat.toStringAsFixed(1)}%'),
+                  ],
+                ),
+              ],
             ),
           ),
-          
-        ],
-      ),
-      )
-    );
-  }
-
-  Container _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(0, 50.0, 0, 32.0),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(20.0),
-          bottomRight: Radius.circular(20.0),
         ),
-        color: Colors.blue,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Container(
-            width: MediaQuery.of(context).size.width,
-            alignment: Alignment.center,
-            child: Text(
-              "Statistik Semua",
-              style: whiteText.copyWith(
-                fontWeight: FontWeight.bold,
-                fontSize: 20.0,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
 
-  List<PieChartSectionData> showingSections() {
-    return List.generate(2, (i) {
-      final isTouched = i == touchedIndex;
-      final fontSize = isTouched ? 25.0 : 16.0;
-      final radius = isTouched ? 60.0 : 50.0;
-      switch (i) {
-        case 0:
-          return PieChartSectionData(
-            color: Colors.green,
-            value: double.tryParse(_persentasetepat) ?? 0,
-            
-            radius: radius,
-            titleStyle: TextStyle(
-              fontSize: fontSize,
-              fontWeight: FontWeight.bold,
-              color: const Color(0xffffffff),
-            ),
-          );
-        case 1:
-          return PieChartSectionData(
-            color: Colors.red,
-            value: double.tryParse(_persentaseterlambat) ?? 0,
-            radius: radius,
-            titleStyle: TextStyle(
-              fontSize: fontSize,
-              fontWeight: FontWeight.bold,
-              color: const Color(0xffffffff),
-            ),
-          );
-        
-        default:
-          throw Error();
-      }
-    });
+  Widget _legendDot(Color color, String label, String value) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 12, height: 12, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
+        SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: textSub)),
+            Text(value, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w800, color: textMain)),
+          ],
+        ),
+      ],
+    );
   }
 }

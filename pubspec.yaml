@@ -17,7 +17,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-fvm uname is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.1+1
+version: 1.2.6+2
 
 environment:
   sdk: ">=2.18.4 <3.5.4"
@@ -36,6 +36,12 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.2
   http: ^1.5.0
+  # Update aplikasi: unduh APK sendiri lalu minta Android memasangnya.
+  # open_filex yang menangan(intent install + FileProvider),
+  # path_provider untuk folder simpan APK, crypto untuk verifikasi md5.
+  open_filex: ^4.7.0
+  path_provider: ^2.1.5
+  crypto: ^3.0.7
   dropdown_search: ^5.0.6
   device_info_plus: ^10.1.0
   deep_pick: ^0.10.0
@@ -57,6 +63,9 @@ dependencies:
   google_nav_bar: ^5.0.7
   line_icons: ^2.0.3
   google_fonts: ^6.1.0
+  percent_indicator: ^4.2.3
+  file_picker: ^6.1.1
+  image_picker: ^1.0.5
 
 dev_dependencies:
   flutter_launcher_icons: "^0.13.0"

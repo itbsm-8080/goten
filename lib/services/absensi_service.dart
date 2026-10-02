@@ -1,7 +1,28 @@
+import 'dart:convert';
 import '../services/api_service.dart';
 import '../config/app_config.dart';
 import '../model/history_absen.dart';
-import 'package:deep_pick/deep_pick.dart';
+
+class AbsensiResult {
+  final bool success;
+  final String message;
+  final String code;
+  final int? shift;
+  final String? tanggalKerja;
+  final bool terlambat;
+  // true kalau check-out ini menggantikan check-out sebelumnya (batas 3x / 18 jam).
+  final bool perbaikan;
+
+  const AbsensiResult({
+    required this.success,
+    required this.message,
+    this.code = '',
+    this.shift,
+    this.tanggalKerja,
+    this.terlambat = false,
+    this.perbaikan = false,
+  });
+}
 
 class AbsensiService {
   // Get absensi history
@@ -31,48 +52,98 @@ class AbsensiService {
     return [];
   }
 
-  // Submit absensi
-  static Future<bool> submitAbsensi({
+  // Daftar shift hari ini + usulan shift dari server (default jam).
+  static Future<Map<String, dynamic>?> getShifts(String karNik) async {
+    return await ApiService.postFormData(AppConfig.absensiShift, {'kar_nik': karNik});
+  }
+
+  // Submit absensi. status 1 = check-in, 2 = check-out (tombol yang menentukan).
+  // shift 0 = Day Shift. Server memaksa 0 hari Minggu dan memvalidasi transisinya.
+  static Future<AbsensiResult> submitAbsensi({
     required String karNik,
-    required String tanggal,
     required String kdCabang,
     required String latitude,
     required String longitude,
+    required int status,
+    required int shift,
   }) async {
-    final response = await ApiService.postFormData(
-        AppConfig.absensiTambah,
-        {
-          "kar_nik": karNik,
-          "tanggal": tanggal,
-          "kd_cabang": kdCabang,
-          "latitude": latitude,
-          "longitude": longitude,
-        }
+    final response = await ApiService.postRaw(
+      AppConfig.absensiTambah,
+      {
+        "kar_nik": karNik,
+        "kd_cabang": kdCabang,
+        "latitude": latitude,
+        "longitude": longitude,
+        "status_absen": status.toString(),
+        "shift": shift.toString(),
+      },
     );
 
-    return response != null;
+    if (response == null) {
+      return const AbsensiResult(success: false, message: 'Gagal terhubung ke server');
+    }
+
+    try {
+      final body = jsonDecode(response.body);
+      if (response.statusCode == 200 && body['success'] == true) {
+        return AbsensiResult(
+          success: true,
+          message: body['message'] as String? ?? 'Berhasil',
+          shift: (body['shift'] as num?)?.toInt(),
+          tanggalKerja: body['tanggal_kerja'] as String?,
+          terlambat: body['terlambat'] == true,
+          perbaikan: body['perbaikan'] == true,
+        );
+      }
+      return AbsensiResult(
+        success: false,
+        message: body['message'] as String? ?? 'Terjadi kesalahan',
+        code: body['code'] as String? ?? 'error',
+        shift: (body['shift'] as num?)?.toInt(),
+      );
+    } catch (_) {
+      return AbsensiResult(success: false, message: 'Respons tidak valid dari server');
+    }
   }
 
-  // Get absensi hari ini
-  static Future<Map<String, String?>> getAbsensiHariIni(String karNama) async {
+  // Sesi absensi per (tanggal_kerja, shift) untuk 7 hari terakhir, plus shift yang
+  // masih punya check-in terbuka (open_shift) supaya client tidak perlu menebak.
+  static Future<Map<String, dynamic>> getAbsensiHariIni(String karNama) async {
     final response = await ApiService.postFormData(
-        AppConfig.absensiHariIni,
-        {"kar_nama": karNama}
+      AppConfig.absensiHariIni,
+      {"kar_nama": karNama}
     );
 
+    final sessions = <Map<String, dynamic>>[];
     if (response != null) {
-      final masuk = pick(response, 'data', 0, '_IN').asStringOrNull();
-      final keluar = pick(response, 'data', 0, '_OUT').asStringOrNull();
-
-      return {
-        'masuk': masuk,
-        'keluar': keluar,
-      };
+      final rawData = response['data'];
+      final data = rawData is List ? rawData : const [];
+      for (final d in data) {
+        if (d is Map) {
+          sessions.add({
+            'tanggal_kerja': d['Tanggal'],
+            'shift': (d['shift'] as num?)?.toInt() ?? 0,
+            'shift_name': d['shift_name'] ?? 'Day Shift',
+            'masuk': d['_IN'],
+            'keluar': d['_OUT'],
+            'status': d['Status'],
+          });
+        }
+      }
     }
 
     return {
-      'masuk': null,
-      'keluar': null,
+      'sessions': sessions,
+      'focus': response?['workDate'] ?? null,
+      'current_hour': response?['current_hour'] ?? null,
+      'today': response?['today'] ?? null,
+      // Work date yang boleh tampil di kartu. Server yang menentukan, client
+      // tidak ikut menghitung aturan 01:00/09:00.
+      'sesi_tampil': (response?['sesi_tampil'] as List?)?.cast<String>() ?? const <String>[],
+        'open_shift': (response?['open_shift'] as List?)
+                ?.map((e) => (e as num).toInt())
+                .toList() ??
+            const <int>[],
     };
   }
 
@@ -94,4 +165,3 @@ class AbsensiService {
     return response != null;
   }
 }
-
