@@ -66,6 +66,11 @@ class _DashboardBaruState extends State<DashboardBaru> {
   List<Map<String, dynamic>> _rotiQUnits = [];
   Map<String, dynamic>? _selectedRotiQUnit;
 
+  // Akunting unit 18: boleh absen di cabang BSM mana pun (titik acuan = cabang dipilih).
+  bool _isAkunting = false;
+  List<Map<String, dynamic>> _cabangUnits = [];
+  Map<String, dynamic>? _selectedCabangUnit;
+
   // ========== PALETTE ==========
   static const Color bg = Color(0xFFF0F4FF);
   static const Color surface = Color(0xFFFFFFFF);
@@ -202,11 +207,12 @@ class _DashboardBaruState extends State<DashboardBaru> {
         }
       }
 
-      // Cek RotiQ Mobile
+      // Cek RotiQ Mobile / akunting lintas cabang BSM
       try {
         final rotiqResponse = await IzinService.cekRotiQMobile(_karNik!);
         if (mounted && rotiqResponse != null) {
           final isRotiQMobile = rotiqResponse['is_rotiq_mobile'] ?? false;
+          final isAkunting = rotiqResponse['is_akunting'] ?? false;
           final units = (rotiqResponse['units'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
           setState(() {
@@ -214,6 +220,18 @@ class _DashboardBaruState extends State<DashboardBaru> {
             _rotiQUnits = units;
             if (!isRotiQMobile) {
               _selectedRotiQUnit = null;
+            }
+            _isAkunting = isAkunting;
+            _cabangUnits = units;
+            _selectedCabangUnit = null;
+            if (isAkunting) {
+              for (final u in units) {
+                if (u['kd_unit'].toString() == (_kdCabang ?? '')) {
+                  _selectedCabangUnit = u;
+                  break;
+                }
+              }
+              if (_selectedCabangUnit == null && units.isNotEmpty) _selectedCabangUnit = units.first;
             }
           });
         }
@@ -406,6 +424,7 @@ class _DashboardBaruState extends State<DashboardBaru> {
         );
       } else {
         // Cabang lain / hari Minggu: langsung submit dengan Day Shift.
+        // Akunting lintas cabang BSM: titik acuan divalidasi server terhadap cabang dipilih.
         result = await AbsensiService.submitAbsensi(
           karNik: _karNik!,
           kdCabang: _kdCabang!,
@@ -413,6 +432,9 @@ class _DashboardBaruState extends State<DashboardBaru> {
           longitude: _longitudeAbsen.toString(),
           status: status,
           shift: 0,
+          kdUnit: _isAkunting && _selectedCabangUnit != null
+              ? _selectedCabangUnit!['kd_unit'].toString()
+              : null,
         );
       }
 
@@ -456,7 +478,11 @@ class _DashboardBaruState extends State<DashboardBaru> {
     }
   }
 
-  void _showUnitPicker() {
+  void _showUnitPicker(
+    List<Map<String, dynamic>> units,
+    Map<String, dynamic>? selected,
+    void Function(Map<String, dynamic> unit) onPick,
+  ) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -479,29 +505,25 @@ class _DashboardBaruState extends State<DashboardBaru> {
               child: Text('Pilih Lokasi Absen', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: textMain)),
             ),
             SizedBox(height: 12),
-            ...(_rotiQUnits.map((unit) => ListTile(
+            ...(units.map((unit) => ListTile(
               leading: Container(
                 width: 36, height: 36,
                 decoration: BoxDecoration(
-                  color: _selectedRotiQUnit?['kd_unit'] == unit['kd_unit'] ? successGreen.withOpacity(0.1) : Colors.grey.shade100,
+                  color: selected?['kd_unit'] == unit['kd_unit'] ? successGreen.withOpacity(0.1) : Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   Icons.store,
                   size: 18,
-                  color: _selectedRotiQUnit?['kd_unit'] == unit['kd_unit'] ? successGreen : textLight,
+                  color: selected?['kd_unit'] == unit['kd_unit'] ? successGreen : textLight,
                 ),
               ),
               title: Text(unit['nm_unit'] ?? '', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: textMain)),
-              trailing: _selectedRotiQUnit?['kd_unit'] == unit['kd_unit']
+              trailing: selected?['kd_unit'] == unit['kd_unit']
                   ? Icon(Icons.check_circle, color: successGreen, size: 22)
                   : null,
               onTap: () {
-                setState(() {
-                  _selectedRotiQUnit = unit;
-                  _latitude = double.tryParse(unit['latitude']?.toString() ?? '0') ?? 0;
-                  _longitude = double.tryParse(unit['longitude']?.toString() ?? '0') ?? 0;
-                });
+                setState(() => onPick(unit));
                 Navigator.pop(ctx);
                 _showMsg('Lokasi absen: ${unit['nm_unit']}', false);
               },
@@ -510,6 +532,12 @@ class _DashboardBaruState extends State<DashboardBaru> {
         ),
       ),
     );
+  }
+
+  // Titik acuan absen: cabang BSM yang dipilih (akunting), unit RotiQ, atau unit asal.
+  void _pilihTitikAbsen(Map<String, dynamic> unit) {
+    _latitude = double.tryParse(unit['latitude']?.toString() ?? '0') ?? 0;
+    _longitude = double.tryParse(unit['longitude']?.toString() ?? '0') ?? 0;
   }
 
   @override
@@ -616,7 +644,10 @@ class _DashboardBaruState extends State<DashboardBaru> {
                               if (_isRotiQMobile && _rotiQUnits.isNotEmpty) ...[
                                 SizedBox(height: 8),
                                 GestureDetector(
-                                  onTap: () => _showUnitPicker(),
+                                  onTap: () => _showUnitPicker(_rotiQUnits, _selectedRotiQUnit, (u) {
+                                    _selectedRotiQUnit = u;
+                                    _pilihTitikAbsen(u);
+                                  }),
                                   child: Container(
                                     padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                     decoration: BoxDecoration(
@@ -631,6 +662,39 @@ class _DashboardBaruState extends State<DashboardBaru> {
                                         Flexible(
                                           child: Text(
                                             _selectedRotiQUnit?['nm_unit'] ?? 'Pilih Lokasi Absen',
+                                            style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        SizedBox(width: 4),
+                                        Icon(Icons.arrow_drop_down, size: 16, color: Colors.white),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              // Lokasi cabang absen (akunting lintas cabang BSM)
+                              if (_isAkunting && _cabangUnits.isNotEmpty) ...[
+                                SizedBox(height: 8),
+                                GestureDetector(
+                                  onTap: () => _showUnitPicker(_cabangUnits, _selectedCabangUnit, (u) {
+                                    _selectedCabangUnit = u;
+                                    _pilihTitikAbsen(u);
+                                  }),
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.business, size: 12, color: Colors.white),
+                                        SizedBox(width: 4),
+                                        Flexible(
+                                          child: Text(
+                                            _selectedCabangUnit?['nm_unit'] ?? 'Pilih Lokasi Absen',
                                             style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
                                             overflow: TextOverflow.ellipsis,
                                           ),

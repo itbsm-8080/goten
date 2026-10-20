@@ -66,6 +66,8 @@ class AbsensiService {
     required String longitude,
     required int status,
     required int shift,
+    // Cabang absen untuk akunting unit 18 yang lintas cabang BSM.
+    String? kdUnit,
   }) async {
     final response = await ApiService.postRaw(
       AppConfig.absensiTambah,
@@ -76,6 +78,7 @@ class AbsensiService {
         "longitude": longitude,
         "status_absen": status.toString(),
         "shift": shift.toString(),
+        if (kdUnit != null) "kd_unit": kdUnit,
       },
     );
 
