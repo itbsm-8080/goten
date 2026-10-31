@@ -17,6 +17,7 @@ import 'laporan_izin_page.dart';
 import 'package:flutter/services.dart';
 import 'services/izin_service.dart';
 import 'approval_izin_page.dart';
+import 'approval_lembur_page.dart';
 import 'pod_page.dart';
 import 'widgets/shift_dialog.dart';
 import 'config/app_version.dart';
@@ -58,7 +59,8 @@ class _DashboardBaruState extends State<DashboardBaru> {
   String _dateNumber = '';
   String _monthYear = '';
   String _kdUnitApprover = '';
-  int _pendingCount = 0;
+  int _pendingIzin = 0;
+  int _pendingLembur = 0;
 
   int _sisaCuti = 0;
 
@@ -182,23 +184,14 @@ class _DashboardBaruState extends State<DashboardBaru> {
           if (mounted && roleResponse != null) {
             final isApprover = roleResponse['is_approver'] ?? false;
             final kdUnits = (roleResponse['kd_units'] as List?)?.map((e) => e.toString()).toList() ?? [];
-
-            int pendingCount = 0;
-            if (isApprover && kdUnits.isNotEmpty) {
-              final pendingResponse = await IzinService.getApprovalList(
-                kdUnits: kdUnits,
-                status: 'PENDING',
-              );
-              if (pendingResponse != null && pendingResponse['data'] != null) {
-                pendingCount = (pendingResponse['data'] as List).length;
-              }
-            }
+            final pending = roleResponse['pending'] as Map?;
 
             if (mounted) {
               setState(() {
                 _isApprover = isApprover;
                 _kdUnits = kdUnits;
-                _pendingCount = pendingCount;
+                _pendingIzin = (pending?['izin'] as num?)?.toInt() ?? 0;
+                _pendingLembur = (pending?['lembur'] as num?)?.toInt() ?? 0;
               });
             }
           }
@@ -1026,98 +1019,84 @@ class _DashboardBaruState extends State<DashboardBaru> {
             ],
           ),
         ),
-        Row(
-          children: items.map((item) {
-            return Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(right: 10),
-                child: _buildMenuCard(
-                  item['icon'] as IconData,
-                  item['label'] as String,
-                  item['subtitle'] as String,
-                  item['color'] as Color,
-                  item['gradient'] as List<Color>,
-                  null,
-                  item['page'] as Widget,
-                ),
-              ),
-            );
-          }).toList(),
-        ),
+        _menuRow(items.map((item) {
+          return _buildMenuCard(
+            item['icon'] as IconData,
+            item['label'] as String,
+            item['subtitle'] as String,
+            item['color'] as Color,
+            item['gradient'] as List<Color>,
+            null,
+            item['page'] as Widget,
+          );
+        }).toList()),
         SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(right: 10),
-                child: _buildMenuCard(
-                  Icons.system_update_alt_rounded,
-                  'Pembaruan',
-                  'Versi $appVersiTampil',
-                  Color(0xFF0EA5E9),
-                  [Color(0xFF0EA5E9), Color(0xFF38BDF8)],
-                  null,
-                  null,
-                  onAction: _cekUpdate,
-                ),
-              ),
+        _menuRow([
+          _buildMenuCard(
+            Icons.system_update_alt_rounded,
+            'Pembaruan',
+            'Versi $appVersiTampil',
+            Color(0xFF0EA5E9),
+            [Color(0xFF0EA5E9), Color(0xFF38BDF8)],
+            null,
+            null,
+            onAction: _cekUpdate,
+          ),
+          if (_isApprover) ...[
+            _buildMenuCard(
+              Icons.checklist_rounded,
+              'Approval Izin',
+              _pendingIzin > 0 ? '$_pendingIzin pending' : 'Izin',
+              Color(0xFF00B4D8),
+              [Color(0xFF00B4D8), Color(0xFF33C8E5)],
+              _pendingIzin,
+              ApprovalIzinPage(karNik: _karNik, kdUnits: _kdUnits),
             ),
-            Expanded(flex: 1, child: SizedBox()),
-            Expanded(flex: 1, child: SizedBox()),
-            Expanded(flex: 1, child: SizedBox()),
+            _buildMenuCard(
+              Icons.more_time_rounded,
+              'Approval Lembur',
+              _pendingLembur > 0 ? '$_pendingLembur pending' : 'Lembur',
+              Color(0xFF0F766E),
+              [Color(0xFF0F766E), Color(0xFF14B8A6)],
+              _pendingLembur,
+              ApprovalLemburPage(karNik: _karNik, kdUnits: _kdUnits),
+            ),
           ],
-        ),
+        ]),
         if (_isPODMenu) ...[
           SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                flex: 1,
-                child: Padding(
-                  padding: EdgeInsets.only(right: 10),
-                  child: _buildMenuCard(
-                    Icons.local_shipping_rounded,
-                    'Proof of Delivery',
-                    'Pengiriman',
-                    Color(0xFFF5A623),
-                    [Color(0xFFF5A623), Color(0xFFFFB84D)],
-                    null,
-                    PODPage(karNik: _karNik),
-                  ),
-                ),
-              ),
-              Expanded(flex: 1, child: SizedBox()),
-              Expanded(flex: 1, child: SizedBox()),
-              Expanded(flex: 1, child: SizedBox()),
-            ],
-          ),
-        ],
-        if (_isApprover) ...[
-          SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                flex: 1,
-                child: Padding(
-                  padding: EdgeInsets.only(right: 10),
-                  child: _buildMenuCard(
-                    Icons.checklist_rounded,
-                    'Approval',
-                    _pendingCount > 0 ? '$_pendingCount pending' : 'Pending',
-                    Color(0xFF00B4D8),
-                    [Color(0xFF00B4D8), Color(0xFF33C8E5)],
-                    _pendingCount,
-                    ApprovalIzinPage(karNik: _karNik, kdUnits: _kdUnits),
-                  ),
-                ),
-              ),
-              Expanded(flex: 1, child: SizedBox()),
-              Expanded(flex: 1, child: SizedBox()),
-              Expanded(flex: 1, child: SizedBox()),
-            ],
-          ),
+          _menuRow([
+            _buildMenuCard(
+              Icons.local_shipping_rounded,
+              'Proof of Delivery',
+              'Pengiriman',
+              Color(0xFFF5A623),
+              [Color(0xFFF5A623), Color(0xFFFFB84D)],
+              null,
+              PODPage(karNik: _karNik),
+            ),
+          ]),
         ],
       ],
+    );
+  }
+
+  // Grid 4 kolom. Slot kosong menjaga lebar kartu tetap sama walau
+  // jumlah menu dalam baris kurang dari empat.
+  Widget _menuRow(List<Widget> cards) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: List.generate(4, (i) {
+          return Expanded(
+            flex: 1,
+            child: Padding(
+              padding: EdgeInsets.only(right: 10),
+              child: i < cards.length ? cards[i] : SizedBox(),
+            ),
+          );
+        }),
+      ),
     );
   }
 
@@ -1125,6 +1104,20 @@ class _DashboardBaruState extends State<DashboardBaru> {
     IconData icon, String label, String subtitle, Color color, List<Color> gradient,
     int? badge, Widget? page,
     {VoidCallback? onAction}) {
+    // Skala mengikuti lebar layar supaya teks 4 kolom tetap terbaca di HP kecil
+    // dan tidak membengkak di layar lebar.
+    final skala = (MediaQuery.sizeOf(context).width / 400).clamp(0.85, 1.1).toDouble();
+    final ukuranIkon = 36 * skala;
+    final ukuranGlyph = (20 * skala).clamp(17.0, 22.0).toDouble();
+    final ukuranLabel = (13 * skala).clamp(11.0, 14.0).toDouble();
+    final ukuranSubtitle = (10 * skala).clamp(8.5, 11.0).toDouble();
+    final paddingHorizontal = (12 * skala).clamp(9.0, 12.0).toDouble();
+    final paddingAtas = (14 * skala).clamp(11.0, 14.0).toDouble();
+    final paddingBawah = (12 * skala).clamp(9.0, 12.0).toDouble();
+    final jarakIkon = (14 * skala).clamp(10.0, 14.0).toDouble();
+    final badgeTinggi = (22 * skala).clamp(18.0, 22.0).toDouble();
+    final badgeFont = (11 * skala).clamp(9.5, 11.0).toDouble();
+
     return GestureDetector(
       onTap: () {
         if (onAction != null) return onAction();
@@ -1146,23 +1139,33 @@ class _DashboardBaruState extends State<DashboardBaru> {
               ),
             ),
             Padding(
-              padding: EdgeInsets.only(left: 12, right: 12, top: 14, bottom: 12),
+              padding: EdgeInsets.only(left: paddingHorizontal, right: paddingHorizontal, top: paddingAtas, bottom: paddingBawah),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 36, height: 36,
+                    width: ukuranIkon, height: ukuranIkon,
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(icon, size: 20, color: Colors.white),
+                    child: Icon(icon, size: ukuranGlyph, color: Colors.white),
                   ),
-                  SizedBox(height: 14),
-                  Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white, height: 1.2)),
+                  SizedBox(height: jarakIkon),
+                  Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(fontSize: ukuranLabel, fontWeight: FontWeight.w700, color: Colors.white, height: 1.2),
+                  ),
                   SizedBox(height: 2),
-                  Text(subtitle, style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w500, color: Colors.white.withOpacity(0.8))),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(fontSize: ukuranSubtitle, fontWeight: FontWeight.w500, color: Colors.white.withOpacity(0.8)),
+                  ),
                 ],
               ),
             ),
@@ -1170,17 +1173,17 @@ class _DashboardBaruState extends State<DashboardBaru> {
               Positioned(
                 top: 10, right: 10,
                 child: Container(
-                  height: 22,
+                  height: badgeTinggi,
                   padding: EdgeInsets.symmetric(horizontal: 7),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(11),
+                    borderRadius: BorderRadius.circular(badgeTinggi / 2),
                     boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4, offset: Offset(0, 2))],
                   ),
                   child: Center(
                     child: Text(
                       badge > 99 ? '99+' : '$badge',
-                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: accentCoral),
+                      style: GoogleFonts.inter(fontSize: badgeFont, fontWeight: FontWeight.w800, color: accentCoral),
                     ),
                   ),
                 ),

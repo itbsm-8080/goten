@@ -58,7 +58,7 @@ class IzinService {
   }
 
   static Future<Map<String, dynamic>?> cekRoleApproval(String karNik) async {
-    return await ApiService.postFormData('${AppConfig.baseUrl}/izin/cek-role', {
+    return await ApiService.postFormData('${AppConfig.baseUrl}/approval/cek-role', {
       'kar_nik': karNik,
     });
   }
@@ -78,10 +78,11 @@ class IzinService {
     });
   }
 
-  static Future<bool> prosesIzin(String ijNomor, String status) async {
+  static Future<bool> prosesIzin(String ijNomor, String status, {String? karNik}) async {
     final response = await ApiService.postFormData('${AppConfig.baseUrl}/izin/proses', {
       'ij_nomor': ijNomor,
       'ij_status': status,
+      if (karNik != null) 'kar_nik': karNik,
     });
     return response != null && response['success'] == true;
   }

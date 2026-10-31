@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:goten/services/izin_service.dart';
+import 'package:goten/widgets/approval_ui.dart';
 
 class ApprovalIzinPage extends StatefulWidget {
   final String? karNik;
@@ -13,345 +13,369 @@ class ApprovalIzinPage extends StatefulWidget {
 }
 
 class _ApprovalIzinPageState extends State<ApprovalIzinPage> {
-  List<dynamic> _listIzin = [];
-  bool _isLoading = true;
-  bool _isApprover = false;
-  String _kdUnit = '';
+  List<dynamic> _items = [];
   List<String> _kdUnits = [];
+  bool _isApprover = false;
+  bool _isCheckingRole = true;
+  bool _roleError = false;
+  bool _isLoading = true;
+  String? _error;
+  String _busyNomor = '';
 
   DateTime _startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _endDate = DateTime.now();
   String _statusFilter = 'PENDING';
 
-  static const Color bg = Color(0xFFF0F4FF);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color textMain = Color(0xFF1B1B2F);
-  static const Color textSub = Color(0xFF5A5A7A);
-  static const Color textLight = Color(0xFF9090A8);
-  static const Color border = Color(0xFFE8ECF4);
-  static const Color primaryBlue = Color(0xFF3B6DF0);
-  static const Color successGreen = Color(0xFF00C897);
-  static const Color accentCoral = Color(0xFFFF5E62);
-  static const Color warningOrange = Color(0xFFFF8C42);
-
   @override
   void initState() {
     super.initState();
-    _cekRole();
+    _kdUnits = widget.kdUnits.where((e) => e.trim().isNotEmpty).toList();
+    if (_kdUnits.isNotEmpty) {
+      // Dashboard hanya mengirim unit ke approver, jadi daftar bisa langsung dimuat
+      // tanpa menunggu cek role dan tanpa sempat menampilkan layar tanpa akses.
+      _isApprover = true;
+      _isCheckingRole = false;
+      _loadApproval();
+    } else {
+      _cekRole();
+    }
   }
 
   Future<void> _cekRole() async {
     final response = await IzinService.cekRoleApproval(widget.karNik ?? '');
-    if (mounted) {
+    if (!mounted) return;
+
+    if (response == null) {
       setState(() {
-        _isApprover = response?['is_approver'] ?? false;
-        _kdUnit = response?['kd_unit']?.toString() ?? '';
+        _isCheckingRole = false;
+        _roleError = true;
+        _isLoading = false;
       });
-      if (_isApprover) {
-        _loadApproval();
-      } else {
-        setState(() => _isLoading = false);
-      }
+      return;
+    }
+
+    final units = (response['kd_units'] as List?)
+            ?.map((e) => e.toString())
+            .where((e) => e.trim().isNotEmpty)
+            .toList() ??
+        <String>[];
+    final approver = response['is_approver'] == true;
+
+    setState(() {
+      _isCheckingRole = false;
+      _roleError = false;
+      _isApprover = approver;
+      _kdUnits = units;
+    });
+
+    if (approver && units.isNotEmpty) {
+      await _loadApproval();
+    } else {
+      setState(() => _isLoading = false);
     }
   }
 
+  Future<void> _retryRole() async {
+    setState(() {
+      _isCheckingRole = true;
+      _roleError = false;
+    });
+    await _cekRole();
+  }
+
   Future<void> _loadApproval() async {
-    setState(() => _isLoading = true);
+    if (_kdUnits.isEmpty) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
     try {
       final response = await IzinService.getApprovalList(
-        kdUnits: widget.kdUnits, // pakai dari widget
+        kdUnits: _kdUnits,
         startDate: DateFormat('yyyy-MM-dd').format(_startDate),
         endDate: DateFormat('yyyy-MM-dd').format(_endDate),
         status: _statusFilter,
       );
-      if (mounted) {
-        setState(() {
-          _listIzin = response?['data'] ?? [];
-          _isLoading = false;
-        });
+      if (!mounted) return;
+
+      if (response == null) {
+        _gagalMuat('Server tidak merespons. Periksa koneksi lalu coba lagi.');
+        return;
       }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+
+      final data = response['data'];
+      setState(() {
+        _items = data is List ? data : <dynamic>[];
+        _isLoading = false;
+        _error = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      _gagalMuat('Pengajuan gagal dimuat. Periksa koneksi lalu coba lagi.');
     }
   }
 
-  Future<void> _proses(String ijNomor, String status) async {
-    bool ok = await IzinService.prosesIzin(ijNomor, status);
-    if (ok) {
-      _showSnack(status == 'ACCEPT' ? 'Izin diterima ✅' : 'Izin ditolak ❌', false);
-      _loadApproval();
-    } else {
-      _showSnack('Gagal memproses', true);
+  void _gagalMuat(String pesan) {
+    setState(() {
+      _isLoading = false;
+      // Daftar lama tetap ditampilkan; kegagalan penyegaran cukup lewat snackbar.
+      _error = _items.isEmpty ? pesan : null;
+    });
+    if (_items.isNotEmpty) {
+      showApprovalSnack(context, pesan, error: true);
     }
   }
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'ACCEPT': return successGreen;
-      case 'REJECT': return accentCoral;
-      default: return warningOrange;
-    }
+  Future<void> _pickDate({required bool isStart}) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: isStart ? _startDate : _endDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      helpText: isStart ? 'Pilih tanggal mulai' : 'Pilih tanggal akhir',
+      cancelText: 'Batal',
+      confirmText: 'Pilih',
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      if (isStart) {
+        _startDate = picked;
+        if (_endDate.isBefore(picked)) _endDate = picked;
+      } else {
+        _endDate = picked;
+        if (_startDate.isAfter(picked)) _startDate = picked;
+      }
+    });
+    await _loadApproval();
   }
 
-  void _showSnack(String msg, bool err) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.inter(fontSize: 13)),
-      backgroundColor: err ? accentCoral : successGreen,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      margin: EdgeInsets.all(16),
-      duration: Duration(seconds: 2),
-    ));
+  Future<void> _ubahStatus(String status) async {
+    if (status == _statusFilter) return;
+    setState(() => _statusFilter = status);
+    await _loadApproval();
+  }
+
+  Future<void> _resetFilter() async {
+    final now = DateTime.now();
+    setState(() {
+      _statusFilter = 'PENDING';
+      _startDate = DateTime(now.year, now.month, 1);
+      _endDate = now;
+    });
+    await _loadApproval();
+  }
+
+  Future<void> _proses(String nomor, String status) async {
+    if (nomor.isEmpty || _busyNomor.isNotEmpty) return;
+
+    setState(() => _busyNomor = nomor);
+    final berhasil = await IzinService.prosesIzin(nomor, status, karNik: widget.karNik);
+    if (!mounted) return;
+
+    setState(() => _busyNomor = '');
+    if (!berhasil) {
+      showApprovalSnack(context, 'Pengajuan gagal diproses. Coba lagi.', error: true);
+      return;
+    }
+
+    showApprovalSnack(
+      context,
+      status == 'ACCEPT' ? 'Pengajuan izin diterima.' : 'Pengajuan izin ditolak.',
+    );
+    await _loadApproval();
+  }
+
+  Future<void> _tolak(dynamic izin) async {
+    final nama = (izin['kar_nama'] ?? 'karyawan').toString();
+    final tanggal = approvalFormatTanggalWaktu(izin['tanggal']);
+    final yakin = await showTolakDialog(
+      context,
+      judul: 'Tolak pengajuan izin?',
+      pesan: tanggal.isEmpty
+          ? 'Pengajuan izin dari $nama akan ditandai ditolak. Periksa kembali sebelum melanjutkan.'
+          : 'Pengajuan izin dari $nama tanggal $tanggal akan ditandai ditolak. Periksa kembali sebelum melanjutkan.',
+    );
+    if (!yakin || !mounted) return;
+    await _proses((izin['ij_nomor'] ?? '').toString(), 'REJECT');
+  }
+
+  bool get _filterDiubah {
+    final now = DateTime.now();
+    final awalBulan = DateTime(now.year, now.month, 1);
+    return _statusFilter != 'PENDING' ||
+        _startDate.year != awalBulan.year ||
+        _startDate.month != awalBulan.month ||
+        _startDate.day != awalBulan.day ||
+        _endDate.year != now.year ||
+        _endDate.month != now.month ||
+        _endDate.day != now.day;
+  }
+
+  String get _emptyMessage {
+    if (_statusFilter == 'PENDING') {
+      return 'Tidak ada pengajuan yang menunggu persetujuan pada rentang tanggal ini.';
+    }
+    return 'Tidak ada pengajuan pada rentang tanggal dan status yang dipilih.';
+  }
+
+  String get _subtitle {
+    if (_isCheckingRole) return 'Memeriksa akses...';
+    if (_roleError) return 'Akses belum dapat diperiksa';
+    if (!_isApprover) return 'Hanya untuk atasan unit';
+    if (_isLoading && _items.isEmpty) return 'Memuat pengajuan...';
+    if (_items.isEmpty) return 'Tidak ada pengajuan';
+    if (_statusFilter == 'PENDING') return '${_items.length} menunggu persetujuan';
+    return '${_items.length} pengajuan';
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isApprover) {
-      return Scaffold(
-        backgroundColor: bg,
-        appBar: AppBar(
-          title: Text('Approval Izin', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: textMain)),
-          backgroundColor: surface,
-          foregroundColor: textMain,
-          elevation: 0,
-          centerTitle: true,
-          shape: Border(bottom: BorderSide(color: border)),
-        ),
-        body: Center(
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Container(
-              padding: EdgeInsets.all(24),
-              decoration: BoxDecoration(color: accentCoral.withOpacity(0.08), borderRadius: BorderRadius.circular(20)),
-              child: Icon(Icons.lock, size: 48, color: accentCoral.withOpacity(0.4)),
-            ),
-            SizedBox(height: 16),
-            Text('Tidak ada akses', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: textMain)),
-            SizedBox(height: 4),
-            Text('Hanya atasan unit yang dapat mengakses', style: GoogleFonts.inter(fontSize: 13, color: textLight)),
-          ]),
-        ),
+    return Scaffold(
+      backgroundColor: ApprovalPalette.background,
+      appBar: ApprovalHeaderBar(
+        title: 'Approval Izin',
+        subtitle: _subtitle,
+        refreshing: _isCheckingRole || (_isLoading && _items.isNotEmpty),
+        onRefresh: _isApprover ? _loadApproval : _retryRole,
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isCheckingRole) {
+      return const ApprovalLoadingState(message: 'Memeriksa akses...');
+    }
+    if (_roleError) {
+      return ApprovalErrorState(
+        title: 'Akses belum dapat diperiksa',
+        message: 'Periksa koneksi internet lalu coba lagi.',
+        onRetry: _retryRole,
       );
     }
+    if (!_isApprover) {
+      return const ApprovalEmptyState(
+        icon: Icons.lock_outline_rounded,
+        title: 'Tidak ada akses',
+        message: 'Halaman ini hanya untuk atasan unit.',
+      );
+    }
+    if (_kdUnits.isEmpty) {
+      return const ApprovalEmptyState(
+        icon: Icons.apartment_rounded,
+        title: 'Belum ada unit',
+        message: 'Akun Anda belum terhubung ke unit kerja. Hubungi admin untuk menautkannya.',
+      );
+    }
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+          child: ApprovalFilterBar(
+            start: _startDate,
+            end: _endDate,
+            status: _statusFilter,
+            onPickStart: () => _pickDate(isStart: true),
+            onPickEnd: () => _pickDate(isStart: false),
+            onStatusChanged: _ubahStatus,
+          ),
+        ),
+        Expanded(child: _buildList()),
+      ],
+    );
+  }
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
-        title: Text('Approval Izin', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: textMain)),
-        backgroundColor: surface,
-        foregroundColor: textMain,
-        elevation: 0,
-        centerTitle: true,
-        shape: Border(bottom: BorderSide(color: border)),
-      ),
-      body: Column(
-        children: [
-          // Filter
-          Container(
-            padding: EdgeInsets.all(12),
-            decoration: BoxDecoration(color: surface, border: Border(bottom: BorderSide(color: border))),
-            child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () async {
-                      DateTime? p = await showDatePicker(context: context, initialDate: _startDate, firstDate: DateTime(2020), lastDate: DateTime(2030));
-                      if (p != null) setState(() => _startDate = p);
-                    },
-                    child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10), border: Border.all(color: border)),
-                      child: Text(DateFormat('dd/MM/yy').format(_startDate), style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: textMain)),
-                    ),
+  Widget _buildList() {
+    return RefreshIndicator(
+      color: ApprovalPalette.primaryStrong,
+      onRefresh: _loadApproval,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (_isLoading && _items.isEmpty)
+            const ApprovalStateSliver(
+              child: ApprovalLoadingState(message: 'Memuat pengajuan...'),
+            )
+          else if (_error != null)
+            ApprovalStateSliver(
+              child: ApprovalErrorState(
+                title: 'Pengajuan gagal dimuat',
+                message: _error!,
+                onRetry: _loadApproval,
+              ),
+            )
+          else if (_items.isEmpty)
+            ApprovalStateSliver(
+              child: ApprovalEmptyState(
+                icon: Icons.inbox_rounded,
+                title: 'Tidak ada pengajuan',
+                message: _emptyMessage,
+                actionLabel: _filterDiubah ? 'Atur ulang filter' : null,
+                onAction: _filterDiubah ? _resetFilter : null,
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => Padding(
+                    padding: EdgeInsets.only(bottom: index == _items.length - 1 ? 0 : 12),
+                    child: _buildCard(_items[index]),
                   ),
+                  childCount: _items.length,
                 ),
-                Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text('—', style: GoogleFonts.inter(color: textLight))),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () async {
-                      DateTime? p = await showDatePicker(context: context, initialDate: _endDate, firstDate: DateTime(2020), lastDate: DateTime(2030));
-                      if (p != null) setState(() => _endDate = p);
-                    },
-                    child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10), border: Border.all(color: border)),
-                      child: Text(DateFormat('dd/MM/yy').format(_endDate), style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: textMain)),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 6),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 6),
-                  decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10), border: Border.all(color: border)),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _statusFilter,
-                      isDense: true,
-                      items: ['ALL', 'PENDING', 'ACCEPT', 'REJECT'].map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600)))).toList(),
-                      onChanged: (v) => setState(() => _statusFilter = v!),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 6),
-                Material(
-                  color: primaryBlue,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InkWell(
-                    onTap: _loadApproval,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(padding: EdgeInsets.all(10), child: Icon(Icons.refresh_rounded, size: 20, color: Colors.white)),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-          // List
-          Expanded(
-            child: _isLoading
-                ? Center(child: CircularProgressIndicator(color: primaryBlue, strokeWidth: 2.5))
-                : _listIzin.isEmpty
-                ? Center(child: Text('Tidak ada pengajuan', style: GoogleFonts.inter(fontSize: 14, color: textLight)))
-                : ListView.builder(
-              padding: EdgeInsets.all(14),
-              itemCount: _listIzin.length,
-              itemBuilder: (_, i) => _buildCard(_listIzin[i]),
-            ),
-          ),
         ],
       ),
     );
   }
 
   Widget _buildCard(dynamic izin) {
-    Color stColor = _statusColor(izin['ij_status'] ?? 'PENDING');
-    String tgl = izin['tanggal'] != null ? DateFormat('dd MMM yyyy – HH:mm').format(DateTime.parse(izin['tanggal'].toString())) : '';
-    bool isPending = (izin['ij_status'] ?? 'PENDING') == 'PENDING';
-    String fotoUrl = izin['ij_foto'] != null && izin['ij_foto'].toString().isNotEmpty
-        ? 'http://103.103.22.7/cutikaryawan/bukti/${izin['ij_foto']}'
-        : '';
+    final status = (izin['ij_status'] ?? 'PENDING').toString();
+    final isPending = ApprovalStatus.parse(status).pending;
+    final nomor = (izin['ij_nomor'] ?? '').toString();
+    final nama = (izin['kar_nama'] ?? 'Tanpa nama').toString();
+    final unit = (izin['nm_unit'] ?? '').toString().trim();
+    final tanggal = approvalFormatTanggalWaktu(izin['tanggal']);
+    final alasan = (izin['alasan'] ?? '').toString().trim();
+    final keterangan = (izin['keterangan'] ?? '').toString().trim();
+    final fotoUrl = approvalBuktiUrl((izin['ij_foto'] ?? '').toString());
 
-    return Container(
-      margin: EdgeInsets.only(bottom: 10),
-      padding: EdgeInsets.all(14),
-      decoration: BoxDecoration(color: surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: border)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header: Nama + Status
-          Row(
-            children: [
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(color: primaryBlue.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
-                child: Icon(Icons.person, size: 20, color: primaryBlue),
-              ),
-              SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(izin['kar_nama'] ?? 'Nama', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: textMain)),
-                    SizedBox(height: 2),
-                    Text('${izin['nm_unit'] ?? ''} • $tgl', style: GoogleFonts.inter(fontSize: 11, color: textLight)),
-                  ],
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(color: stColor.withOpacity(0.08), borderRadius: BorderRadius.circular(8)),
-                child: Text(izin['ij_status'] ?? 'PENDING', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: stColor)),
-              ),
-            ],
-          ),
-          SizedBox(height: 10),
-          // Alasan + Keterangan
-          Container(
-            padding: EdgeInsets.all(10),
-            decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('${izin['alasan'] ?? ''}', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: textMain)),
-                if (izin['keterangan'] != null && izin['keterangan'].toString().isNotEmpty) ...[
-                  SizedBox(height: 4),
-                  Text(izin['keterangan'], style: GoogleFonts.inter(fontSize: 12, color: textSub)),
-                ],
-              ],
-            ),
-          ),
-          // Foto preview
-          if (fotoUrl.isNotEmpty) ...[
-            SizedBox(height: 10),
-            GestureDetector(
-              onTap: () => _showFullImage(fotoUrl),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.network(
-                  fotoUrl,
-                  height: 120,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(height: 60, color: Colors.grey.shade200, child: Center(child: Text('Gagal memuat', style: GoogleFonts.inter(fontSize: 10, color: textLight)))),
-                ),
-              ),
-            ),
-          ],
-          // Action buttons
-          if (isPending) ...[
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 40,
-                    child: ElevatedButton(
-                      onPressed: () => _proses(izin['ij_nomor'], 'ACCEPT'),
-                      style: ElevatedButton.styleFrom(backgroundColor: successGreen, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.check, size: 18),
-                        SizedBox(width: 4),
-                        Text('ACCEPT', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
-                      ]),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 10),
-                Expanded(
-                  child: SizedBox(
-                    height: 40,
-                    child: ElevatedButton(
-                      onPressed: () => _proses(izin['ij_nomor'], 'REJECT'),
-                      style: ElevatedButton.styleFrom(backgroundColor: accentCoral, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.close, size: 18),
-                        SizedBox(width: 4),
-                        Text('REJECT', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
-                      ]),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
+    final meta = [if (unit.isNotEmpty) unit, if (tanggal.isNotEmpty) tanggal].join(' · ');
 
-  void _showFullImage(String url) {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: InteractiveViewer(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Image.network(url, fit: BoxFit.contain),
+    return ApprovalCardShell(
+      nama: nama,
+      meta: meta,
+      status: status,
+      footer: isPending
+          ? ApprovalActionBar(
+              busy: _busyNomor == nomor,
+              enabled: _busyNomor.isEmpty,
+              onReject: () => _tolak(izin),
+              onAccept: () => _proses(nomor, 'ACCEPT'),
+            )
+          : null,
+      children: [
+        ApprovalInfoRow(label: 'Alasan', value: alasan.isEmpty ? 'Tidak disebutkan' : alasan),
+        if (keterangan.isNotEmpty) ApprovalInfoRow(label: 'Keterangan', value: keterangan),
+        if (fotoUrl.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: ApprovalPhotoThumb(
+              url: fotoUrl,
+              onTap: () => showApprovalPhotoDialog(context, fotoUrl),
             ),
           ),
-        ),
-      ),
+      ],
     );
   }
 }
