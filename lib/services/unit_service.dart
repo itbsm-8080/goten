@@ -21,6 +21,9 @@ class UnitService {
             longitude: element['longitude'] != null
                 ? double.tryParse(element['longitude'].toString()) ?? 0.0
                 : 0.0,
+            radiusAbsen: element['radius_absen'] != null
+                ? double.tryParse(element['radius_absen'].toString()) ?? 25
+                : 25,
           ));
         });
 

@@ -29,6 +29,7 @@ class KaryawanService {
         'latitude': pick(data, 'latitude').asDoubleOrNull(),
         'longitude': pick(data, 'longitude').asDoubleOrNull(),
         'nm_unit': pick(data, 'nm_unit').asStringOrNull(),
+        'radius_absen': pick(data, 'radius_absen').asIntOrNull(),
       };
     }
     return null;

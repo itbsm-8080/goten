@@ -1,3 +1,4 @@
 /// Radius jangkauan absen dalam meter, diukur dari titik unit ke posisi GPS HP.
-/// Dashboard dan halaman absen memakai nilai ini supaya batasnya tidak berbeda.
+/// Nilai aslinya ada di tunit.radius_absen; ini hanya cadangan kalau data unit
+/// tidak membawa radius (misalnya server lama).
 const double radiusAbsenMeter = 25;

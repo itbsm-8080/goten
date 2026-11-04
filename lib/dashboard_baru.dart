@@ -55,6 +55,8 @@ class _DashboardBaruState extends State<DashboardBaru> {
   double _longitude = 0;
   double _latitudeAbsen = 0;
   double _longitudeAbsen = 0;
+  // Radius unit acuan. Ikut unit yang dipilih, jadi tiap lokasi bisa beda.
+  double _radiusAbsen = radiusAbsenMeter;
   String? _address;
   String _dayName = '';
   String _dateNumber = '';
@@ -136,6 +138,7 @@ class _DashboardBaruState extends State<DashboardBaru> {
         setState(() {
           _latitude = unit?['latitude'] ?? 0;
           _longitude = unit?['longitude'] ?? 0;
+          _radiusAbsen = (unit?['radius_absen'] as num?)?.toDouble() ?? radiusAbsenMeter;
           _kdCabang = kar['kar_kd_unit'];
           _karNik = kar['kar_nik'];
           _karJabatan = jabat ?? 'Jabatan';
@@ -226,6 +229,14 @@ class _DashboardBaruState extends State<DashboardBaru> {
                 }
               }
               if (_selectedCabangUnit == null && units.isNotEmpty) _selectedCabangUnit = units.first;
+              // Server memakai cabang ini sebagai titik acuan, jadi pre-check di
+              // HP harus ikut cabang yang sama.
+              final acuan = _selectedCabangUnit;
+              if (acuan != null) {
+                _latitude = double.tryParse(acuan['latitude']?.toString() ?? '0') ?? 0;
+                _longitude = double.tryParse(acuan['longitude']?.toString() ?? '0') ?? 0;
+                _radiusAbsen = (acuan['radius_absen'] as num?)?.toDouble() ?? radiusAbsenMeter;
+              }
             }
           });
         }
@@ -380,15 +391,15 @@ class _DashboardBaruState extends State<DashboardBaru> {
     return jarakMeter * 1000;
   }
 
-  // Jarak GPS HP ke titik absen. _latitude/_longitude sudah mengikuti unit RotiQ
-  // yang dipilih (lihat _pilihUnitRotiQ), jadi jadi acuan yang benar.
+  // Jarak GPS HP ke titik absen. _latitude/_longitude sudah mengikuti unit
+  // yang dipilih (lihat _pilihTitikAbsen), jadi acuan dan radiusnya ikut unit itu.
   String? _cekJangkauan() {
     if (_latitude == 0 && _longitude == 0) return null;
     if (_latitudeAbsen == 0 && _longitudeAbsen == 0) {
       return 'Lokasi GPS belum siap, coba beberapa saat lagi';
     }
     final jarak = _hitungJarak(_latitudeAbsen, _longitudeAbsen, _latitude, _longitude);
-    if (jarak >= radiusAbsenMeter) {
+    if (jarak >= _radiusAbsen) {
       return 'Lokasi absen tidak sesuai (jarak: ${jarak.toStringAsFixed(0)}m)';
     }
     return null;
@@ -403,6 +414,14 @@ class _DashboardBaruState extends State<DashboardBaru> {
     try {
       final aksi = status == 1 ? 'Check In' : 'Check Out';
 
+      // Server memakai unit ini sebagai titik acuan dan sumber radius. Kirim
+      // hanya kalau karyawannya memang berhak; server memvalidasi ulang.
+      final kdUnitAbsen = _isAkunting && _selectedCabangUnit != null
+          ? _selectedCabangUnit!['kd_unit'].toString()
+          : _isRotiQMobile && _selectedRotiQUnit != null
+              ? _selectedRotiQUnit!['kd_unit'].toString()
+              : null;
+
       AbsensiResult result;
       if (_showShiftPicker) {
         // Cabang 20: pilih shift dulu di dialog, lalu submit.
@@ -415,10 +434,10 @@ class _DashboardBaruState extends State<DashboardBaru> {
           longitude: _longitudeAbsen.toString(),
           status: status,
           openShift: _checkOutShift,
+          kdUnit: kdUnitAbsen,
         );
       } else {
         // Cabang lain / hari Minggu: langsung submit dengan Day Shift.
-        // Akunting lintas cabang BSM: titik acuan divalidasi server terhadap cabang dipilih.
         result = await AbsensiService.submitAbsensi(
           karNik: _karNik!,
           kdCabang: _kdCabang!,
@@ -426,9 +445,7 @@ class _DashboardBaruState extends State<DashboardBaru> {
           longitude: _longitudeAbsen.toString(),
           status: status,
           shift: 0,
-          kdUnit: _isAkunting && _selectedCabangUnit != null
-              ? _selectedCabangUnit!['kd_unit'].toString()
-              : null,
+          kdUnit: kdUnitAbsen,
         );
       }
 
@@ -532,6 +549,7 @@ class _DashboardBaruState extends State<DashboardBaru> {
   void _pilihTitikAbsen(Map<String, dynamic> unit) {
     _latitude = double.tryParse(unit['latitude']?.toString() ?? '0') ?? 0;
     _longitude = double.tryParse(unit['longitude']?.toString() ?? '0') ?? 0;
+    _radiusAbsen = (unit['radius_absen'] as num?)?.toDouble() ?? radiusAbsenMeter;
   }
 
   @override

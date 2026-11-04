@@ -67,6 +67,7 @@ Future<AbsensiResult> submitAbsensiWithShift(
   required String longitude,
   required int status,
   List<int> openShift = const [],
+  String? kdUnit,
 }) async {
   while (true) {
     final shift = await showShiftDialog(
@@ -87,6 +88,7 @@ Future<AbsensiResult> submitAbsensiWithShift(
       longitude: longitude,
       status: status,
       shift: shift,
+      kdUnit: kdUnit,
     );
 
     if (result.success || result.code != 'duplicate') return result;
