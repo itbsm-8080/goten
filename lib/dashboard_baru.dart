@@ -21,6 +21,7 @@ import 'approval_lembur_page.dart';
 import 'pod_page.dart';
 import 'widgets/shift_dialog.dart';
 import 'config/app_version.dart';
+import 'config/radius_absen.dart';
 import 'services/update_service.dart';
 import 'widgets/update_dialog.dart';
 
@@ -387,7 +388,7 @@ class _DashboardBaruState extends State<DashboardBaru> {
       return 'Lokasi GPS belum siap, coba beberapa saat lagi';
     }
     final jarak = _hitungJarak(_latitudeAbsen, _longitudeAbsen, _latitude, _longitude);
-    if (jarak >= 500.0) {
+    if (jarak >= radiusAbsenMeter) {
       return 'Lokasi absen tidak sesuai (jarak: ${jarak.toStringAsFixed(0)}m)';
     }
     return null;

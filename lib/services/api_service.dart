@@ -1,15 +1,27 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
+import '../config/app_version.dart';
 
 class ApiService {
   static const int timeoutSeconds = 30;
+
+  // Identitas versi untuk gate backend. Build tanpa --dart-define tidak
+  // mengirim version code, jadi server menganggapnya versi lama.
+  static Map<String, String> _headerVersi() => {
+        'X-App-Platform': 'android',
+        if (appVersionCode.isNotEmpty) 'X-App-Version-Code': appVersionCode,
+        if (appVersionName.isNotEmpty) 'X-App-Version-Name': appVersionName,
+      };
 
   static Future<Map<String, dynamic>?> get(String endpoint) async {
     try {
       final response = await http.get(
         Uri.parse(endpoint),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          ..._headerVersi(),
+        },
       ).timeout(Duration(seconds: timeoutSeconds));
 
       if (response.statusCode == 200) {
@@ -30,6 +42,7 @@ class ApiService {
         Uri.parse(endpoint),
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
+          ..._headerVersi(),
         },
         body: data,
       ).timeout(
@@ -58,6 +71,7 @@ class ApiService {
         Uri.parse(endpoint),
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
+          ..._headerVersi(),
         },
         body: data,
       ).timeout(

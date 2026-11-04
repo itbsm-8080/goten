@@ -13,6 +13,7 @@ import 'package:one_clock/one_clock.dart';
 import 'dart:convert';
 import 'package:deep_pick/deep_pick.dart';
 import 'utils/device_utils.dart';
+import 'config/radius_absen.dart';
 import 'dart:io' show Platform;
 import 'services/absensi_service.dart';
 import 'services/karyawan_service.dart';
@@ -245,7 +246,7 @@ class _AbsenState extends State<Absen> {
       print('  Longitude: $_longitude_absen');
       print('Jarak Check In: ${jarak.toStringAsFixed(2)} meters');
 
-      if (jarak >= 500.0) {
+      if (jarak >= radiusAbsenMeter) {
         _showErrorMessage('Lokasi absen tidak sesuai (jarak: ${jarak.toStringAsFixed(0)}m)');
         return;
       }
@@ -300,7 +301,7 @@ class _AbsenState extends State<Absen> {
 
       print('Jarak Check Out: $jarak meters');
 
-      if (jarak >= 500.0) {
+      if (jarak >= radiusAbsenMeter) {
         _showErrorMessage('Lokasi absen tidak sesuai (jarak: ${jarak.toStringAsFixed(0)}m)');
         return;
       }

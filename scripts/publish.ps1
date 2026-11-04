@@ -11,11 +11,14 @@
 
 .EXAMPLE
     .\scripts\publish.ps1 -Catatan "Perbaikan absensi shift 20"
+
+    .\scripts\publish.ps1 -Catatan "Wajib update" -Wajib
 #>
 param(
     [string]$Versi,
     [int]$Kode,
     [string]$Catatan = '',
+    [switch]$Wajib,
     [switch]$Force
 )
 
@@ -102,6 +105,7 @@ $baseUrl = ($env:APK_BASE_URL)
 if (-not $baseUrl) { $baseUrl = 'http://103.103.22.7/cutikaryawan/apk' }
 $namaApk = "goten-release-$Kode.apk"
 $catatanJson = if ($Catatan) { $Catatan } else { '' }
+$wajibJson = if ($Wajib) { 'true' } else { 'false' }
 
 $json = @"
 {
@@ -110,7 +114,7 @@ $json = @"
   "url": "$baseUrl/$namaApk",
   "md5": "$md5",
   "ukuran": $ukuran,
-  "wajib": false,
+  "wajib": $wajibJson,
   "catatan": "$catatanJson"
 }
 "@
@@ -127,3 +131,9 @@ Write-Host ''
 Write-Host $json -ForegroundColor DarkGray
 Write-Host ''
 Write-Host "  Posted ke $baseUrl" -ForegroundColor DarkGray
+Write-Host ''
+if ($Wajib) {
+    Write-Host '  Wajib update. Setelah APK ini tersebar, set di backend:' -ForegroundColor Yellow
+    Write-Host '    VERSION_GATE_MODE=block' -ForegroundColor Gray
+    Write-Host "    MIN_APP_VERSION_CODE=$Kode" -ForegroundColor Gray
+}
