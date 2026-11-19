@@ -24,6 +24,7 @@ import 'config/app_version.dart';
 import 'config/radius_absen.dart';
 import 'services/update_service.dart';
 import 'widgets/update_dialog.dart';
+import 'widgets/lokasi_absen_map.dart';
 
 class DashboardBaru extends StatefulWidget {
   const DashboardBaru({super.key});
@@ -261,32 +262,32 @@ class _DashboardBaruState extends State<DashboardBaru> {
         if (mulai != null && selesai != null) return '$mulai - $selesai';
       }
     }
-    switch (kd) {
-      case 1: return '07:00 - 15:00';
-      case 2: return '15:00 - 23:00';
-      case 3: return '23:00 - 07:00';
-      default: return '';
-    }
+    return '';
   }
 
   String _getShiftName(int? shift) {
-    switch (shift) {
-      case 0: return 'Day Shift';
-      case 1: return 'Pagi (${_jamShift(shift)})';
-      case 2: return 'Siang (${_jamShift(shift)})';
-      case 3: return 'Malam (${_jamShift(shift)})';
-      default: return '';
-    }
+    if (shift == null) return '';
+    if (shift == 0) return 'Day Shift';
+    final nama = namaShiftServer(_shiftList, shift);
+    if (nama.isEmpty) return '';
+    final jam = _jamShift(shift);
+    return jam.isEmpty ? nama : '$nama ($jam)';
   }
 
-  // Cabang 20 saja yang punya pilihan shift. Jabatan tidak dibatasi.
   // kar_kd_unit bisa string atau int tergantung driver MySQL.
-  bool get _isShiftUser => _kdCabang?.toString() == '20';
+  bool get _isShiftUser {
+    final unit = _kdCabang?.toString();
+    final jabat = _karKdJabat?.toString();
+    if (unit == '20') return true;
+    return const ['19', '22', '23', '24', '25', '27', '28'].contains(unit) &&
+        const ['21', '22', '47', '45'].contains(jabat);
+  }
 
   // Hari Minggu hanya Day Shift, jadi pemilih shift disembunyikan.
   bool get _isMinggu => _dayName.toLowerCase() == 'minggu';
 
-  bool get _showShiftPicker => _isShiftUser && !_isMinggu;
+  bool get _showShiftPicker =>
+      _isShiftUser && (!_isMinggu || _kdCabang?.toString() != '20');
 
   // Work date yang boleh tampil di kartu, ditentukan server lewat sesi_tampil
   // (hari ini + sesi yang belum keluar dan belum lewat batas reset 01:00/09:00).
@@ -324,7 +325,14 @@ class _DashboardBaruState extends State<DashboardBaru> {
   }
 
   // Shift untuk tampilan: yang sedang dipilih, fallback ke sesi terbuka terakhir.
-  int get _displayShift => _selectedShift ?? (_openShift.isNotEmpty ? _openShift.last : 0);
+  int get _displayShift {
+    if (_selectedShift != null) return _selectedShift!;
+    if (_openShift.isNotEmpty) return _openShift.last;
+    for (final s in _sesiAktif) {
+      if (s['masuk'] != null) return (s['shift'] as num?)?.toInt() ?? 0;
+    }
+    return 0;
+  }
 
   // Tampilan MASUK/KELUAR mengikuti shift yang dipilih. Server mengirim sesi
   // terbaru lebih dulu, jadi yang pertama cocok adalah sesi terbaru.
@@ -409,7 +417,10 @@ class _DashboardBaruState extends State<DashboardBaru> {
   Future<void> _doAbsensi(int status) async {
     if (_karNik == null || _kdCabang == null) { _showMsg('Data tidak lengkap', true); return; }
     final luarJangkauan = _cekJangkauan();
-    if (luarJangkauan != null) { _showMsg(luarJangkauan, true); return; }
+    if (luarJangkauan != null) {
+      _showMsgLuarJangkauan(luarJangkauan);
+      return;
+    }
     setState(() => _isSubmitting = true);
     try {
       final aksi = status == 1 ? 'Check In' : 'Check Out';
@@ -466,6 +477,8 @@ class _DashboardBaruState extends State<DashboardBaru> {
           });
           _applyShiftDisplay();
         }
+      } else if (result.code == 'out_of_range') {
+        _showMsgLuarJangkauan(result.message);
       } else {
         _showMsg(result.message, true);
       }
@@ -489,6 +502,55 @@ class _DashboardBaruState extends State<DashboardBaru> {
     }
   }
 
+  String _namaTitikAbsen() {
+    if (_isAkunting && _selectedCabangUnit != null) {
+      return _selectedCabangUnit!['nm_unit']?.toString() ?? _namaUnit ?? 'Unit';
+    }
+    if (_isRotiQMobile && _selectedRotiQUnit != null) {
+      return _selectedRotiQUnit!['nm_unit']?.toString() ?? _namaUnit ?? 'Unit';
+    }
+    return _namaUnit ?? 'Unit';
+  }
+
+  void _bukaPetaLokasi() {
+    final jarak =
+        _hitungJarak(_latitudeAbsen, _longitudeAbsen, _latitude, _longitude);
+    showLokasiAbsenMap(
+      context,
+      latUser: _latitudeAbsen,
+      lngUser: _longitudeAbsen,
+      latUnit: _latitude,
+      lngUnit: _longitude,
+      radius: _radiusAbsen,
+      jarak: jarak,
+      namaUnit: _namaTitikAbsen(),
+    );
+  }
+
+  void _showMsgLuarJangkauan(String msg) {
+    if (!mounted) return;
+    final bisaLihatPeta = (_latitudeAbsen != 0 || _longitudeAbsen != 0) &&
+        (_latitude != 0 || _longitude != 0);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(
+      content: Text(msg,
+          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
+      backgroundColor: accentCoral,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: EdgeInsets.all(16),
+      duration: Duration(seconds: 6),
+      action: bisaLihatPeta
+          ? SnackBarAction(
+              label: 'Lihat',
+              textColor: Colors.white,
+              onPressed: _bukaPetaLokasi,
+            )
+          : null,
+    ));
+  }
+
   void _showUnitPicker(
     List<Map<String, dynamic>> units,
     Map<String, dynamic>? selected,
@@ -497,49 +559,84 @@ class _DashboardBaruState extends State<DashboardBaru> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
       builder: (ctx) => Container(
-        padding: EdgeInsets.only(top: 16, bottom: 24),
+        padding: EdgeInsets.only(top: 16),
         decoration: BoxDecoration(
           color: surface,
           borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
-            ),
-            SizedBox(height: 16),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Text('Pilih Lokasi Absen', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: textMain)),
-            ),
-            SizedBox(height: 12),
-            ...(units.map((unit) => ListTile(
-              leading: Container(
-                width: 36, height: 36,
-                decoration: BoxDecoration(
-                  color: selected?['kd_unit'] == unit['kd_unit'] ? successGreen.withOpacity(0.1) : Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.store,
-                  size: 18,
-                  color: selected?['kd_unit'] == unit['kd_unit'] ? successGreen : textLight,
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2))),
+              ),
+              SizedBox(height: 16),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Text('Pilih Lokasi Absen',
+                    style: GoogleFonts.inter(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: textMain)),
+              ),
+              SizedBox(height: 12),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.only(bottom: 16),
+                  children: units
+                      .map((unit) => ListTile(
+                            leading: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: selected?['kd_unit'] == unit['kd_unit']
+                                    ? successGreen.withOpacity(0.1)
+                                    : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.store,
+                                size: 18,
+                                color: selected?['kd_unit'] == unit['kd_unit']
+                                    ? successGreen
+                                    : textLight,
+                              ),
+                            ),
+                            title: Text(unit['nm_unit'] ?? '',
+                                style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: textMain)),
+                            trailing: selected?['kd_unit'] == unit['kd_unit']
+                                ? Icon(Icons.check_circle,
+                                    color: successGreen, size: 22)
+                                : null,
+                            onTap: () {
+                              setState(() => onPick(unit));
+                              Navigator.pop(ctx);
+                              _showMsg(
+                                  'Lokasi absen: ${unit['nm_unit']}', false);
+                            },
+                          ))
+                      .toList(),
                 ),
               ),
-              title: Text(unit['nm_unit'] ?? '', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: textMain)),
-              trailing: selected?['kd_unit'] == unit['kd_unit']
-                  ? Icon(Icons.check_circle, color: successGreen, size: 22)
-                  : null,
-              onTap: () {
-                setState(() => onPick(unit));
-                Navigator.pop(ctx);
-                _showMsg('Lokasi absen: ${unit['nm_unit']}', false);
-              },
-            ))),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -808,7 +905,11 @@ class _DashboardBaruState extends State<DashboardBaru> {
                                 Text('MASUK', style: GoogleFonts.inter(fontSize: 8, fontWeight: FontWeight.w700, color: Colors.white.withOpacity(0.6), letterSpacing: 1)),
                                 SizedBox(height: 3),
                                 Text(
-                                  inDone && _masuk != null ? (_masuk!.contains(' ') ? _masuk!.split(' ').last : _masuk!) : '--:--',
+                                  _masuk != null
+                                      ? (_masuk!.contains(' ')
+                                          ? _masuk!.split(' ').last
+                                          : _masuk!)
+                                      : '--:--',
                                   style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
                                 ),
                               ],
@@ -999,14 +1100,14 @@ class _DashboardBaruState extends State<DashboardBaru> {
         'gradient': [Color(0xFF3B6DF0), Color(0xFF5B8AF7)],
         'page': History()
       },
-      {
-        'icon': Icons.edit_calendar_rounded,
-        'label': 'Izin',
-        'subtitle': 'Pengajuan',
-        'color': Color(0xFFFF5E62),
-        'gradient': [Color(0xFFFF5E62), Color(0xFFFF7F82)],
-        'page': IzinPage(karNik: _karNik)
-      },
+      // {
+      //   'icon': Icons.edit_calendar_rounded,
+      //   'label': 'Izin',
+      //   'subtitle': 'Pengajuan',
+      //   'color': Color(0xFFFF5E62),
+      //   'gradient': [Color(0xFFFF5E62), Color(0xFFFF7F82)],
+      //   'page': IzinPage(karNik: _karNik)
+      // },
       {
         'icon': Icons.folder_open_rounded,
         'label': 'Laporan',
@@ -1213,4 +1314,3 @@ class _DashboardBaruState extends State<DashboardBaru> {
     );
   }
 }
-

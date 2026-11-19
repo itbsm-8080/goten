@@ -25,6 +25,23 @@ const Map<int, _ShiftMeta> _meta = {
   3: _ShiftMeta(Icons.bedtime_outlined, Color(0xFFE7EAFB), Color(0xFF3730A3), 'Malam'),
 };
 
+String namaShiftServer(List shifts, int kd) {
+  for (final s in shifts) {
+    if (s is Map && s['kd_shift'] == kd) {
+      final mentah = (s['nm_shift'] ?? '').toString().trim();
+      if (mentah.isNotEmpty) {
+        return mentah
+            .toLowerCase()
+            .split(' ')
+            .where((k) => k.isNotEmpty)
+            .map((k) => k[0].toUpperCase() + k.substring(1))
+            .join(' ');
+      }
+    }
+  }
+  return _meta[kd]?.nama ?? '';
+}
+
 String _ddMyyyy(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}';
 
@@ -69,38 +86,27 @@ Future<AbsensiResult> submitAbsensiWithShift(
   List<int> openShift = const [],
   String? kdUnit,
 }) async {
-  while (true) {
-    final shift = await showShiftDialog(
-      context,
-      aksi: aksi,
-      karNik: karNik,
-      openShift: openShift,
-      status: status,
-    );
-    if (shift == null || !context.mounted) {
-      return const AbsensiResult(success: false, message: 'Dibatalkan', code: 'cancelled');
-    }
-
-    final result = await AbsensiService.submitAbsensi(
-      karNik: karNik,
-      kdCabang: kdCabang,
-      latitude: latitude,
-      longitude: longitude,
-      status: status,
-      shift: shift,
-      kdUnit: kdUnit,
-    );
-
-    if (result.success || result.code != 'duplicate') return result;
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(result.message),
-        backgroundColor: _green,
-        behavior: SnackBarBehavior.floating,
-      ));
-    }
+  final shift = await showShiftDialog(
+    context,
+    aksi: aksi,
+    karNik: karNik,
+    openShift: openShift,
+    status: status,
+  );
+  if (shift == null || !context.mounted) {
+    return const AbsensiResult(
+        success: false, message: 'Dibatalkan', code: 'cancelled');
   }
+
+  return AbsensiService.submitAbsensi(
+    karNik: karNik,
+    kdCabang: kdCabang,
+    latitude: latitude,
+    longitude: longitude,
+    status: status,
+    shift: shift,
+    kdUnit: kdUnit,
+  );
 }
 
 class _ShiftSheet extends StatefulWidget {
@@ -130,6 +136,7 @@ class _ShiftSheetState extends State<_ShiftSheet> {
   bool get _isIn => widget.aksi == 'Check In';
   Color get _accent => _green;
   Color get _accentSoft => _greenSoft;
+  String _nama(int kd) => namaShiftServer(_shifts, kd);
 
   // Shift yang bisa dipilih saat check-out: yang punya check-in (terbuka atau sudah
   // tertutup, asalkan masih dalam batas 3x / 18 jam di server).
@@ -309,7 +316,7 @@ class _ShiftSheetState extends State<_ShiftSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Shift $kd (${meta.nama})',
+                              'Shift $kd (${_nama(kd)})',
                               style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
@@ -470,7 +477,8 @@ class _ShiftSheetState extends State<_ShiftSheet> {
                 onPressed: (!_isIn && _openShift.isEmpty)
                     ? null
                     : () => Navigator.pop(context, _selected ?? _recommended ?? 0),
-                child: Text('Konfirmasi $aksi · ${_meta[_selected ?? _recommended ?? 0]!.nama}'),
+                child: Text(
+                    'Konfirmasi $aksi · ${_nama(_selected ?? _recommended ?? 0)}'),
               ),
               const SizedBox(height: 6),
               TextButton(
