@@ -74,6 +74,8 @@ class _DashboardBaruState extends State<DashboardBaru> {
 
   // Akunting unit 18: boleh absen di cabang BSM mana pun (titik acuan = cabang dipilih).
   bool _isAkunting = false;
+  bool _isSemuaUnit = false;
+  bool get _bisaPilihCabang => _isAkunting || _isSemuaUnit;
   List<Map<String, dynamic>> _cabangUnits = [];
   Map<String, dynamic>? _selectedCabangUnit;
 
@@ -211,6 +213,7 @@ class _DashboardBaruState extends State<DashboardBaru> {
         if (mounted && rotiqResponse != null) {
           final isRotiQMobile = rotiqResponse['is_rotiq_mobile'] ?? false;
           final isAkunting = rotiqResponse['is_akunting'] ?? false;
+          final isSemuaUnit = rotiqResponse['is_semua_unit'] ?? false;
           final units = (rotiqResponse['units'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
           setState(() {
@@ -220,9 +223,10 @@ class _DashboardBaruState extends State<DashboardBaru> {
               _selectedRotiQUnit = null;
             }
             _isAkunting = isAkunting;
-            _cabangUnits = units;
+            _isSemuaUnit = isSemuaUnit;
+            _cabangUnits = (isAkunting || isSemuaUnit) ? units : [];
             _selectedCabangUnit = null;
-            if (isAkunting) {
+            if (isAkunting || isSemuaUnit) {
               for (final u in units) {
                 if (u['kd_unit'].toString() == (_kdCabang ?? '')) {
                   _selectedCabangUnit = u;
@@ -427,7 +431,7 @@ class _DashboardBaruState extends State<DashboardBaru> {
 
       // Server memakai unit ini sebagai titik acuan dan sumber radius. Kirim
       // hanya kalau karyawannya memang berhak; server memvalidasi ulang.
-      final kdUnitAbsen = _isAkunting && _selectedCabangUnit != null
+      final kdUnitAbsen = _bisaPilihCabang && _selectedCabangUnit != null
           ? _selectedCabangUnit!['kd_unit'].toString()
           : _isRotiQMobile && _selectedRotiQUnit != null
               ? _selectedRotiQUnit!['kd_unit'].toString()
@@ -503,7 +507,7 @@ class _DashboardBaruState extends State<DashboardBaru> {
   }
 
   String _namaTitikAbsen() {
-    if (_isAkunting && _selectedCabangUnit != null) {
+    if (_bisaPilihCabang && _selectedCabangUnit != null) {
       return _selectedCabangUnit!['nm_unit']?.toString() ?? _namaUnit ?? 'Unit';
     }
     if (_isRotiQMobile && _selectedRotiQUnit != null) {
@@ -783,7 +787,7 @@ class _DashboardBaruState extends State<DashboardBaru> {
                                 ),
                               ],
                               // Lokasi cabang absen (akunting lintas cabang BSM)
-                              if (_isAkunting && _cabangUnits.isNotEmpty) ...[
+                              if (_bisaPilihCabang && _cabangUnits.isNotEmpty) ...[
                                 SizedBox(height: 8),
                                 GestureDetector(
                                   onTap: () => _showUnitPicker(_cabangUnits, _selectedCabangUnit, (u) {
